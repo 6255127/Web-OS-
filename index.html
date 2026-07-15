@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Web OS</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/apps.css">
+</head>
+<body>
+
+<!-- boot animation — shown for ~2.5s then fades out -->
+<div id="boot-screen">
+  <div class="boot-inner">
+    <div class="boot-logo">
+      <svg width="52" height="52" viewBox="0 0 52 52" fill="none">
+        <rect width="52" height="52" rx="14" fill="white" fill-opacity="0.08"/>
+        <rect x="10" y="10" width="13" height="13" rx="3" fill="white"/>
+        <rect x="29" y="10" width="13" height="13" rx="3" fill="white" fill-opacity="0.6"/>
+        <rect x="10" y="29" width="13" height="13" rx="3" fill="white" fill-opacity="0.6"/>
+        <rect x="29" y="29" width="13" height="13" rx="3" fill="white" fill-opacity="0.3"/>
+      </svg>
+    </div>
+    <div class="boot-name">Web OS</div>
+    <div class="boot-bar-wrap"><div class="boot-bar"></div></div>
+    <div class="boot-hint" id="boot-hint">loading…</div>
+  </div>
+</div>
+
+<!-- lock screen — just the time, date, and enter button -->
+<div id="lock-screen">
+  <div class="lock-card">
+    <p class="lock-time" id="lock-time">12:00</p>
+    <p class="lock-date" id="lock-date">Sunday, July 12</p>
+    <button class="enter-btn" onclick="window.enterOS()">Enter</button>
+  </div>
+</div>
+
+<!-- desktop — everything lives in here -->
+<div id="desktop">
+  <!-- wallpaper layer sits behind everything — keeps it out of any backdrop-filter stacking context -->
+  <div id="wp-bg-layer"></div>
+  <canvas id="live-wp-canvas"></canvas>
+  <video id="live-wp-video" muted loop playsinline></video>
+
+  <!-- customizable desktop clock widget -->
+  <div id="desktop-widget-clock" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); z-index:10; font-weight:200; font-variant-numeric:tabular-nums; text-align:center; pointer-events:none; transition: color 0.3s, font-size 0.3s, opacity 0.3s;">12:00</div>
+
+  <!-- topbar -->
+  <div id="topbar">
+    <div id="topbar-left">Web OS</div>
+    <div id="topbar-right"><span id="tb-clock">12:00 PM</span></div>
+  </div>
+
+  <!-- notes -->
+  <div class="window" id="win-notes">
+    <div class="titlebar" id="th-notes">
+      <button class="tb-close" onclick="closeWin('notes')"></button>
+      <button class="tb-min"   onclick="closeWin('notes')"></button>
+      <button class="tb-max"></button>
+      <span class="win-title">Notes</span>
+    </div>
+    <div class="win-body">
+      <textarea id="notes-textarea" placeholder="Write anything…"></textarea>
+      <div id="notes-bar">Notes · auto-saved</div>
+    </div>
+  </div>
+
+  <!-- settings — wallpapers, theme, name, font size -->
+  <div class="window" id="win-settings">
+    <div class="titlebar" id="th-settings">
+      <button class="tb-close" onclick="closeWin('settings')"></button>
+      <button class="tb-min"   onclick="closeWin('settings')"></button>
+      <button class="tb-max"></button>
+      <span class="win-title">Settings</span>
+    </div>
+    <div class="win-body" style="padding:20px;overflow-y:auto;display:flex;flex-direction:column;gap:24px;">
+
+      <!-- name -->
+      <div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px;">Your Name</div>
+        <div style="display:flex;gap:8px;">
+          <input id="settings-name-input" type="text" placeholder="Enter your name"
+            style="flex:1;background:rgba(128,128,128,0.1);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;font-size:13px;color:var(--text);font-family:var(--font);outline:none;">
+          <button class="focus-btn focus-btn-reset" onclick="saveName()" style="padding:8px 16px;font-size:12px;">Save</button>
+        </div>
+      </div>
+
+      <!-- theme -->
+      <div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px;">Appearance</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button id="theme-toggle-btn" class="focus-btn focus-btn-reset" onclick="toggleTheme()" style="padding:8px 16px;font-size:12px;">Dark Mode</button>
+        </div>
+      </div>
+
+      <!-- font size -->
+      <div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px;">Font Size</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="focus-btn focus-btn-reset" onclick="changeFontSize(-1)" style="padding:8px 14px;font-size:14px;">A−</button>
+          <span id="font-size-display" style="font-size:13px;color:var(--muted);min-width:36px;text-align:center;">14px</span>
+          <button class="focus-btn focus-btn-reset" onclick="changeFontSize(1)"  style="padding:8px 14px;font-size:14px;">A+</button>
+        </div>
+      </div>
+
+      <!-- wallpapers -->
+      <div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px;">Wallpaper</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+          <input type="file" id="wp-video-upload" accept="video/mp4,video/webm,video/*" style="display:none;" onchange="handleVideoWpUpload(event)">
+          <button class="focus-btn focus-btn-reset" onclick="document.getElementById('wp-video-upload').click()" style="padding:6px 14px;font-size:11px;">+ Add Video</button>
+        </div>
+        <div class="wp-grid" id="wp-grid"></div>
+      </div>
+
+      <!-- desktop clock settings -->
+      <div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px;">Desktop Clock</div>
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;"><input type="checkbox" id="clock-toggle" onchange="updateClockSettings()"> Show Clock on Desktop</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span style="font-size:12px;color:var(--muted);">Color:</span>
+            <input type="color" id="clock-color" value="#ffffff" onchange="updateClockSettings()" style="width:30px;height:30px;padding:0;border:none;border-radius:4px;cursor:pointer;">
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span style="font-size:12px;color:var(--muted);">Size:</span>
+            <input type="range" id="clock-size" min="30" max="150" value="80" oninput="updateClockSettings()" style="flex:1;">
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span style="font-size:12px;color:var(--muted);">Opacity:</span>
+            <input type="range" id="clock-opacity" min="0" max="100" value="80" oninput="updateClockSettings()" style="flex:1;">
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span style="font-size:12px;color:var(--muted);">Design:</span>
+            <select id="clock-font" onchange="updateClockSettings()" style="flex:1;background:rgba(128,128,128,0.1);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:12px;outline:none;">
+              <option value="var(--font)">Modern (Default)</option>
+              <option value="monospace">Digital Monospace</option>
+              <option value="'Times New Roman', serif">Classic Serif</option>
+              <option value="cursive">Cursive</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- calendar -->
+  <div class="window" id="win-calendar">
+    <div class="titlebar" id="th-calendar">
+      <button class="tb-close" onclick="closeWin('calendar')"></button>
+      <button class="tb-min"   onclick="closeWin('calendar')"></button>
+      <button class="tb-max"></button>
+      <span class="win-title">Calendar</span>
+    </div>
+    <div class="win-body">
+      <div class="cal-wrap">
+        <div class="cal-nav">
+          <button onclick="calShift(-1)">‹</button>
+          <span class="cal-month-label" id="cal-label">July 2026</span>
+          <button onclick="calShift(1)">›</button>
+        </div>
+        <div class="cal-grid" id="cal-grid"></div>
+        <div class="cal-events-section">
+          <div class="cal-events-label" id="cal-ev-title">Today</div>
+          <div id="cal-ev-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- terminal -->
+  <div class="window" id="win-terminal">
+    <div class="titlebar" id="th-terminal">
+      <button class="tb-close" onclick="closeWin('terminal')" style="background:#ff5f57"></button>
+      <button class="tb-min"   onclick="closeWin('terminal')" style="background:#febc2e"></button>
+      <button class="tb-max"                                  style="background:#28c840"></button>
+      <span class="win-title" style="color:rgba(255,255,255,0.35)">bash</span>
+    </div>
+    <div class="win-body">
+      <div class="term-shell">
+        <div class="term-output" id="term-out"></div>
+        <div class="term-input-row">
+          <span class="term-prompt">~ %</span>
+          <input class="term-field" id="term-in" type="text"
+            autocomplete="off" spellcheck="false" onkeydown="termKey(event)" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- focus timer -->
+  <div class="window" id="win-focus">
+    <div class="titlebar" id="th-focus">
+      <button class="tb-close" onclick="closeWin('focus')"></button>
+      <button class="tb-min"   onclick="closeWin('focus')"></button>
+      <button class="tb-max"></button>
+      <span class="win-title">Focus Timer</span>
+    </div>
+    <div class="win-body">
+      <div class="focus-body">
+        <div class="focus-mode-tabs">
+          <button class="focus-tab active" id="tab-focus" onclick="switchMode('focus')">Focus</button>
+          <button class="focus-tab"        id="tab-short" onclick="switchMode('short')">Short break</button>
+          <button class="focus-tab"        id="tab-long"  onclick="switchMode('long')">Long break</button>
+        </div>
+        <div class="focus-ring-wrap">
+          <svg class="focus-ring-svg" viewBox="0 0 150 150">
+            <circle class="focus-ring-bg"       cx="75" cy="75" r="65"></circle>
+            <circle class="focus-ring-progress" cx="75" cy="75" r="65" id="focus-ring"></circle>
+          </svg>
+          <div class="focus-time-display">
+            <div class="focus-clock" id="focus-clock">25:00</div>
+            <div class="focus-label" id="focus-mode-label">Focus</div>
+          </div>
+        </div>
+        <div class="focus-controls">
+          <button class="focus-btn focus-btn-main"  id="focus-main-btn" onclick="focusToggle()">Start</button>
+          <button class="focus-btn focus-btn-reset"                     onclick="focusReset()">Reset</button>
+        </div>
+        <div class="focus-sessions">Session <span id="focus-session-num">1</span> of 4</div>
+        <div class="session-dots" id="session-dots"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- palette forge -->
+  <div class="window" id="win-palette">
+    <div class="titlebar" id="th-palette">
+      <button class="tb-close" onclick="closeWin('palette')"></button>
+      <button class="tb-min"   onclick="closeWin('palette')"></button>
+      <button class="tb-max"   onclick="toggleMaximize('palette')"></button>
+      <span class="win-title">Palette Forge</span>
+    </div>
+    <div class="win-body" style="padding:0;overflow:hidden;display:flex;">
+      <iframe src="palette.html" class="app-iframe"></iframe>
+    </div>
+  </div>
+
+  <!-- music player -->
+  <div class="window" id="win-music">
+    <div class="titlebar" id="th-music">
+      <button class="tb-close" onclick="closeWin('music')"></button>
+      <button class="tb-min"   onclick="closeWin('music')"></button>
+      <button class="tb-max"   onclick="toggleMaximize('music')"></button>
+      <span class="win-title">Music</span>
+    </div>
+    <div class="win-body" style="padding:24px;text-align:center;display:flex;flex-direction:column;justify-content:center;position:relative;">
+      <input type="file" id="music-upload" accept="audio/*" style="display:none;" onchange="handleMusicUpload(event)">
+      <button class="focus-btn focus-btn-reset" onclick="document.getElementById('music-upload').click()"
+        style="position:absolute;top:12px;right:12px;padding:4px 8px;font-size:11px;">+ Add</button>
+      <div id="music-art" style="width:160px;height:160px;border-radius:8px;background:linear-gradient(135deg,#a18cd1,#fbc2eb);margin:0 auto 18px;box-shadow:var(--shadow);transition:transform 0.3s;"></div>
+      <div id="music-title"  style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 10px;">No file loaded</div>
+      <div id="music-artist" style="font-size:12px;color:var(--muted);margin-bottom:20px;">Upload a file to play</div>
+      <div style="display:flex;justify-content:center;gap:16px;align-items:center;">
+        <button class="focus-btn focus-btn-reset" onclick="musicPrev()" style="width:36px;height:36px;padding:0;">⏮</button>
+        <button class="focus-btn focus-btn-main"  id="music-play-btn" onclick="musicToggle()" style="width:50px;height:50px;padding:0;font-size:18px;">▶</button>
+        <button class="focus-btn focus-btn-reset" onclick="musicNext()" style="width:36px;height:36px;padding:0;">⏭</button>
+      </div>
+      <div id="music-progress-bar" onclick="musicSeek(event)"
+        style="margin-top:18px;height:4px;background:var(--border);border-radius:2px;overflow:hidden;cursor:pointer;">
+        <div id="music-progress" style="width:0%;height:100%;background:var(--text);transition:width 0.1s linear;pointer-events:none;"></div>
+      </div>
+      <audio id="music-audio" style="display:none;"></audio>
+    </div>
+  </div>
+
+  <!-- pixel art -->
+  <div class="window" id="win-pixel">
+    <div class="titlebar" id="th-pixel">
+      <button class="tb-close" onclick="closeWin('pixel')"></button>
+      <button class="tb-min"   onclick="closeWin('pixel')"></button>
+      <button class="tb-max"   onclick="toggleMaximize('pixel')"></button>
+      <span class="win-title">Pixel Art</span>
+    </div>
+    <div class="win-body" style="padding:15px;display:flex;flex-direction:column;align-items:center;gap:14px;">
+      <div id="pixel-grid" style="display:grid;grid-template-columns:repeat(16,1fr);width:256px;height:256px;border-top:1px solid rgba(128,128,128,0.2);border-left:1px solid rgba(128,128,128,0.2);background:#fff;cursor:crosshair;user-select:none;"></div>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <input type="color" id="pixel-color" value="#000000" style="width:30px;height:30px;padding:0;border:none;cursor:pointer;">
+        <button class="focus-btn focus-btn-reset" onclick="setPixelTool('draw')"  id="btn-tool-draw"  style="background:var(--text);color:var(--bg);">Draw</button>
+        <button class="focus-btn focus-btn-reset" onclick="setPixelTool('erase')" id="btn-tool-erase">Erase</button>
+        <button class="focus-btn focus-btn-reset" onclick="clearPixelGrid()">Clear</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- calculator -->
+  <div class="window" id="win-calc">
+    <div class="titlebar" id="th-calc">
+      <button class="tb-close" onclick="closeWin('calc')"></button>
+      <button class="tb-min"   onclick="closeWin('calc')"></button>
+      <button class="tb-max"   onclick="toggleMaximize('calc')"></button>
+      <span class="win-title">Calculator</span>
+    </div>
+    <div class="win-body" style="padding:20px;">
+      <div id="calc-display">0</div>
+      <div id="calc-grid">
+        <button class="calc-top" onclick="calcPress('C')">AC</button>
+        <button class="calc-top" onclick="calcPress('(')">(</button>
+        <button class="calc-top" onclick="calcPress(')')">)</button>
+        <button class="calc-op"  onclick="calcPress('/')">÷</button>
+        <button onclick="calcPress('7')">7</button>
+        <button onclick="calcPress('8')">8</button>
+        <button onclick="calcPress('9')">9</button>
+        <button class="calc-op"  onclick="calcPress('*')">×</button>
+        <button onclick="calcPress('4')">4</button>
+        <button onclick="calcPress('5')">5</button>
+        <button onclick="calcPress('6')">6</button>
+        <button class="calc-op"  onclick="calcPress('-')">−</button>
+        <button onclick="calcPress('1')">1</button>
+        <button onclick="calcPress('2')">2</button>
+        <button onclick="calcPress('3')">3</button>
+        <button class="calc-op"  onclick="calcPress('+')">+</button>
+        <button class="calc-zero" onclick="calcPress('0')">0</button>
+        <button onclick="calcPress('.')">.</button>
+        <button class="calc-op"  onclick="calcPress('=')">=</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- weather — Doha, Qatar -->
+  <div class="window" id="win-weather">
+    <div class="titlebar" id="th-weather">
+      <button class="tb-close" onclick="closeWin('weather')"></button>
+      <button class="tb-min"   onclick="closeWin('weather')"></button>
+      <button class="tb-max"   onclick="toggleMaximize('weather')"></button>
+      <span class="win-title">Weather — Doha</span>
+    </div>
+    <div class="win-body" style="padding:24px;display:flex;flex-direction:column;align-items:center;gap:0;">
+      <div style="text-align:center;margin-bottom:16px;">
+        <div style="font-size:60px;line-height:1.1;" id="weather-icon">--</div>
+        <div style="font-size:13px;color:var(--muted);font-weight:600;margin-bottom:2px;">Doha, Qatar</div>
+        <div id="weather-display" style="font-size:64px;font-weight:800;line-height:1;letter-spacing:-2px;">--°</div>
+        <div id="weather-feels"   style="font-size:13px;color:var(--muted);margin-top:2px;">--</div>
+        <div id="weather-desc"    style="font-size:14px;font-weight:600;margin-top:6px;">Loading...</div>
+      </div>
+      <!-- extra info grid -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;width:100%;margin-top:10px;">
+        <div style="background:rgba(128,128,128,0.08);border-radius:var(--radius);padding:10px;text-align:center;">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:600;">Wind</div>
+          <div id="weather-wind" style="font-size:14px;font-weight:700;margin-top:3px;">--</div>
+          <div id="weather-dir"  style="font-size:11px;color:var(--muted);">--</div>
+        </div>
+        <div style="background:rgba(128,128,128,0.08);border-radius:var(--radius);padding:10px;text-align:center;">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:600;">Humidity</div>
+          <div id="weather-hum"  style="font-size:14px;font-weight:700;margin-top:3px;">--</div>
+          <div id="weather-dew"  style="font-size:11px;color:var(--muted);">dew --</div>
+        </div>
+        <div style="background:rgba(128,128,128,0.08);border-radius:var(--radius);padding:10px;text-align:center;">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:600;">Pressure</div>
+          <div id="weather-pres" style="font-size:14px;font-weight:700;margin-top:3px;">--</div>
+          <div id="weather-vis"  style="font-size:11px;color:var(--muted);">vis --</div>
+        </div>
+        <div style="background:rgba(128,128,128,0.08);border-radius:var(--radius);padding:10px;text-align:center;">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:600;">UV Index</div>
+          <div id="weather-uv"   style="font-size:14px;font-weight:700;margin-top:3px;">--</div>
+        </div>
+      </div>
+      <button class="enter-btn" style="margin-top:16px;width:100%;background:var(--text);color:var(--bg);" onclick="fetchWeather()">Refresh</button>
+    </div>
+  </div>
+
+  <!-- tetris -->
+  <div class="window" id="win-tetris">
+    <div class="titlebar" id="th-tetris">
+      <button class="tb-close" onclick="closeWin('tetris')"></button>
+      <button class="tb-min"   onclick="closeWin('tetris')"></button>
+      <button class="tb-max"   onclick="toggleMaximize('tetris')"></button>
+      <span class="win-title">Tetris</span>
+    </div>
+    <div class="win-body" style="padding:0;display:flex;align-items:stretch;background:#111;">
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;padding:16px;">
+        <canvas id="tetris-canvas" style="display:block;image-rendering:pixelated;"></canvas>
+      </div>
+      <div style="width:100px;background:#0d0d0d;border-left:1px solid #333;display:flex;flex-direction:column;gap:18px;padding:18px 10px;font-family:monospace;color:#eee;">
+        <div>
+          <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Score</div>
+          <div id="tetris-score" style="font-size:18px;font-weight:bold;color:#FFE138;">0</div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Level</div>
+          <div id="tetris-level" style="font-size:18px;font-weight:bold;color:#0DFF72;">1</div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Lines</div>
+          <div id="tetris-lines" style="font-size:18px;font-weight:bold;color:#0DC2FF;">0</div>
+        </div>
+        <div style="margin-top:auto;font-size:9px;color:#555;line-height:1.7;">
+          ← → Move<br>↑/X Rotate<br>↓ Soft drop<br>Space Hard drop<br>P Pause<br>R Restart
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- snake -->
+  <div class="window" id="win-snake">
+    <div class="titlebar" id="th-snake">
+      <button class="tb-close" onclick="closeWin('snake')"></button>
+      <button class="tb-min"   onclick="closeWin('snake')"></button>
+      <button class="tb-max"   onclick="toggleMaximize('snake')"></button>
+      <span class="win-title">Snake</span>
+    </div>
+    <div class="win-body" style="padding:0;display:flex;align-items:stretch;background:#111;">
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;padding:16px;">
+        <canvas id="snake-canvas" style="display:block;"></canvas>
+      </div>
+      <div style="width:100px;background:#0d0d0d;border-left:1px solid #333;display:flex;flex-direction:column;gap:18px;padding:18px 10px;font-family:monospace;color:#eee;">
+        <div>
+          <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Score</div>
+          <div id="snake-score" style="font-size:18px;font-weight:bold;color:#0DFF72;">0</div>
+        </div>
+        <div style="margin-top:auto;font-size:9px;color:#555;line-height:1.7;">WASD or<br>Arrows<br><br>Space to<br>restart</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- dock -->
+  <div id="dock">
+    <div class="dock-item" id="di-calendar" data-tip="Calendar" onclick="toggleWin('calendar')">
+      <div class="dock-icon" style="background:linear-gradient(135deg,#43e97b,#38f9d7);font-size:22px;display:flex;align-items:center;justify-content:center;">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      </div>
+      <div class="dock-dot"></div>
+    </div>
+    <div class="dock-item" id="di-focus" data-tip="Focus Timer" onclick="toggleWin('focus')">
+      <div class="dock-icon" style="background:linear-gradient(135deg,#f5576c,#f093fb);font-size:22px;display:flex;align-items:center;justify-content:center;">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16 14"/></svg>
+      </div>
+      <div class="dock-dot"></div>
+    </div>
+    <div class="dock-item" id="di-weather" data-tip="Weather" onclick="toggleWin('weather')">
+      <div class="dock-icon" style="background:linear-gradient(135deg,#4facfe,#00f2fe);font-size:22px;display:flex;align-items:center;justify-content:center;">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z"/></svg>
+      </div>
+      <div class="dock-dot"></div>
+    </div>
+    <!-- tools folder — notes, terminal, palette, calculator, settings -->
+    <div class="dock-item" id="di-tools" data-tip="Tools" onclick="toggleWin('tools')">
+      <div class="dock-icon" style="background:linear-gradient(135deg,#667eea,#764ba2);font-size:22px;display:flex;align-items:center;justify-content:center;">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+      </div>
+      <div class="dock-dot"></div>
+    </div>
+    <!-- games folder -->
+    <div class="dock-item" id="di-games" data-tip="Games" onclick="toggleWin('games')">
+      <div class="dock-icon" style="background:linear-gradient(135deg,#ff9966,#ff5e62);font-size:22px;display:flex;align-items:center;justify-content:center;">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h4m-2-2v4"/><circle cx="17" cy="11" r="1" fill="white"/><circle cx="15" cy="13" r="1" fill="white"/></svg>
+      </div>
+      <div class="dock-dot"></div>
+    </div>
+    <!-- media folder -->
+    <div class="dock-item" id="di-media" data-tip="Media" onclick="toggleWin('media')">
+      <div class="dock-icon" style="background:linear-gradient(135deg,#a18cd1,#fbc2eb);font-size:22px;display:flex;align-items:center;justify-content:center;">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M10 8l6 4-6 4V8z" fill="white" stroke="none"/></svg>
+      </div>
+      <div class="dock-dot"></div>
+    </div>
+  </div>
+
+  <!-- games folder window -->
+  <div class="window" id="win-games">
+    <div class="titlebar" id="th-games">
+      <button class="tb-close" onclick="closeWin('games')"></button>
+      <button class="tb-min"   onclick="closeWin('games')"></button>
+      <button class="tb-max"></button>
+      <span class="win-title">Games</span>
+    </div>
+    <div class="win-body" style="padding:20px;display:flex;gap:20px;flex-wrap:wrap;align-content:flex-start;">
+      <div class="folder-app" onclick="toggleWin('tetris'); setTimeout(tetris.init, 50)">
+        <div class="folder-icon" style="background:linear-gradient(135deg,#FF0D72,#3877FF)">
+          <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+            <!-- T-piece shape, the most recognisable tetromino -->
+            <rect x="4"  y="12" width="8" height="8" rx="1.5" fill="white"/>
+            <rect x="12" y="12" width="8" height="8" rx="1.5" fill="white"/>
+            <rect x="20" y="12" width="8" height="8" rx="1.5" fill="white"/>
+            <rect x="12" y="4"  width="8" height="8" rx="1.5" fill="rgba(255,255,255,0.55)"/>
+          </svg>
+        </div>
+        <div class="folder-name">Tetris</div>
+      </div>
+      <div class="folder-app" onclick="toggleWin('snake'); setTimeout(snakeGame.init, 50)">
+        <div class="folder-icon" style="background:linear-gradient(135deg,#43e97b,#38f9d7)">
+          <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+            <!-- snake body made of squares -->
+            <rect x="4"  y="14" width="6" height="6" rx="1.5" fill="white"/>
+            <rect x="10" y="14" width="6" height="6" rx="1.5" fill="rgba(255,255,255,0.85)"/>
+            <rect x="16" y="14" width="6" height="6" rx="1.5" fill="rgba(255,255,255,0.7)"/>
+            <rect x="16" y="8"  width="6" height="6" rx="1.5" fill="rgba(255,255,255,0.55)"/>
+            <rect x="22" y="8"  width="6" height="6" rx="1.5" fill="rgba(255,255,255,0.4)"/>
+            <!-- apple -->
+            <circle cx="8" cy="8" r="3" fill="#FF0D72"/>
+          </svg>
+        </div>
+        <div class="folder-name">Snake</div>
+      </div>
+      <div class="folder-app" onclick="toggleWin('pixel')">
+        <div class="folder-icon" style="background:linear-gradient(135deg,#84fab0,#8fd3f4)">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><circle cx="11" cy="11" r="2"/></svg>
+        </div>
+        <div class="folder-name">Pixel Art</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- tools folder window — settings moved here -->
+  <div class="window" id="win-tools">
+    <div class="titlebar" id="th-tools">
+      <button class="tb-close" onclick="closeWin('tools')"></button>
+      <button class="tb-min"   onclick="closeWin('tools')"></button>
+      <button class="tb-max"></button>
+      <span class="win-title">Tools</span>
+    </div>
+    <div class="win-body" style="padding:20px;display:flex;gap:20px;flex-wrap:wrap;align-content:flex-start;">
+      <div class="folder-app" onclick="toggleWin('notes')">
+        <div class="folder-icon" style="background:linear-gradient(135deg,#667eea,#764ba2)">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        </div>
+        <div class="folder-name">Notes</div>
+      </div>
+      <div class="folder-app" onclick="toggleWin('terminal')">
+        <div class="folder-icon" style="background:linear-gradient(135deg,#1e1e2e,#3a3a50)">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        </div>
+        <div class="folder-name">Terminal</div>
+      </div>
+      <div class="folder-app" onclick="toggleWin('palette')">
+        <div class="folder-icon" style="background:linear-gradient(135deg,#fa709a,#fee140)">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="white"/><circle cx="17.5" cy="10.5" r=".5" fill="white"/><circle cx="8.5" cy="7.5" r=".5" fill="white"/><circle cx="6.5" cy="12.5" r=".5" fill="white"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
+        </div>
+        <div class="folder-name">Palette</div>
+      </div>
+      <div class="folder-app" onclick="toggleWin('calc')">
+        <div class="folder-icon" style="background:#FF9F0A;display:flex;align-items:center;justify-content:center;">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="10" y2="10"/><line x1="12" y1="10" x2="14" y2="10"/><line x1="16" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="10" y2="14"/><line x1="12" y1="14" x2="14" y2="14"/><line x1="16" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="10" y2="18"/><line x1="12" y1="18" x2="14" y2="18"/><line x1="16" y1="18" x2="16" y2="18"/></svg>
+        </div>
+        <div class="folder-name">Calculator</div>
+      </div>
+      <!-- settings is now in tools folder -->
+      <div class="folder-app" onclick="toggleWin('settings')">
+        <div class="folder-icon" style="background:linear-gradient(135deg,#8e9eab,#eef2f3)">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </div>
+        <div class="folder-name">Settings</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- media folder window -->
+  <div class="window" id="win-media">
+    <div class="titlebar" id="th-media">
+      <button class="tb-close" onclick="closeWin('media')"></button>
+      <button class="tb-min"   onclick="closeWin('media')"></button>
+      <button class="tb-max"></button>
+      <span class="win-title">Media</span>
+    </div>
+    <div class="win-body" style="padding:20px;display:flex;gap:20px;flex-wrap:wrap;align-content:flex-start;">
+      <div class="folder-app" onclick="toggleWin('music')">
+        <div class="folder-icon" style="background:linear-gradient(135deg,#a18cd1,#fbc2eb)">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        </div>
+        <div class="folder-name">Music</div>
+      </div>
+      <div class="folder-app" onclick="toggleWin('gallery')">
+        <div class="folder-icon" style="background:linear-gradient(135deg,#f7971e,#ffd200)">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        </div>
+        <div class="folder-name">Gallery</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- gallery app -->
+  <div class="window" id="win-gallery">
+    <div class="titlebar" id="th-gallery">
+      <button class="tb-close" onclick="closeWin('gallery')"></button>
+      <button class="tb-min"   onclick="closeWin('gallery')"></button>
+      <button class="tb-max"   onclick="toggleMaximize('gallery')"></button>
+      <span class="win-title">Gallery</span>
+    </div>
+    <div class="win-body" style="display:flex;flex-direction:column;overflow:hidden;">
+      <!-- toolbar -->
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border);flex-shrink:0;">
+        <input type="file" id="gallery-upload" accept="image/*" multiple style="display:none" onchange="handleGalleryUpload(event)">
+        <button class="focus-btn focus-btn-reset" onclick="document.getElementById('gallery-upload').click()" style="padding:5px 13px;font-size:12px;">+ Add images</button>
+        <span style="font-size:11px;color:var(--muted);">click any image to open it</span>
+      </div>
+      <!-- image grid -->
+      <div id="gallery-grid" style="flex:1;display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:4px;padding:8px;overflow-y:auto;background:var(--bg);"></div>
+      <!-- lightbox -->
+      <div id="gallery-lightbox" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.92);z-index:100;flex-direction:column;align-items:center;justify-content:center;gap:12px;">
+        <img id="gallery-lb-img" style="max-width:92%;max-height:78%;object-fit:contain;border-radius:6px;box-shadow:0 8px 40px rgba(0,0,0,0.6);">
+        <div style="display:flex;align-items:center;gap:16px;">
+          <button onclick="lbNav(-1)" style="background:rgba(255,255,255,0.12);border:none;color:#fff;width:38px;height:38px;border-radius:50%;font-size:18px;cursor:pointer;">‹</button>
+          <span id="gallery-lb-label" style="color:rgba(255,255,255,0.6);font-size:12px;min-width:60px;text-align:center;"></span>
+          <button onclick="lbNav(1)"  style="background:rgba(255,255,255,0.12);border:none;color:#fff;width:38px;height:38px;border-radius:50%;font-size:18px;cursor:pointer;">›</button>
+        </div>
+        <div style="display:flex;gap:10px;">
+          <button onclick="deleteGalleryImg()" style="background:rgba(220,50,50,0.3);border:1px solid rgba(220,50,50,0.5);color:#fff;padding:5px 14px;border-radius:6px;font-size:12px;cursor:pointer;">Delete</button>
+          <button onclick="closeLightbox()"    style="background:rgba(255,255,255,0.1);border:none;color:#fff;padding:5px 14px;border-radius:6px;font-size:12px;cursor:pointer;">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+</div>
+
+<div id="toast"></div>
+
+<script src="js/core.js"></script>
+<script src="js/apps.js"></script>
+<script src="js/tetris.js"></script>
+<script src="js/snake.js"></script>
+
+</body>
+</html>

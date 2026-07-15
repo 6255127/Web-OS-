@@ -1,0 +1,156 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PaletteForge | Intelligent Color Design Toolkit</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;700;800&family=Merriweather:wght@700&family=Playfair+Display:wght@700&family=Montserrat:wght@700&family=Roboto+Slab:wght@700&family=Open+Sans&family=Lato&family=Nunito&family=Source+Sans+Pro&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/palette.css">
+</head>
+<body>
+
+    <aside class="sidebar">
+        <div class="logo">
+            <div class="logo-icon"></div>
+            PaletteForge
+        </div>
+        <div class="history-section" id="history-section">
+            <h3>Recent Palettes</h3>
+            <div class="history-grid" id="history-grid"></div>
+            <button class="btn btn-secondary" style="width:100%; margin-top:16px; padding: 8px; font-size:12px;" onclick="clearHistory()">Clear History</button>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <header class="header">
+            <div>
+                <h1 style="font-size: 28px; margin-bottom: 4px;">Extract & Design</h1>
+                <p style="color: var(--text-secondary);">Generate professional color systems instantly.</p>
+            </div>
+            <div class="header-controls">
+                <div class="mood-tag" id="mood-tag">
+                    <span id="mood-icon">âœ¨</span> <span id="mood-text">Analyzing Mood...</span>
+                </div>
+                <div class="mode-toggle">
+                    <button class="mode-btn active" id="btn-mode-image" onclick="setMode('image')">Image</button>
+                    <button class="mode-btn" id="btn-mode-manual" onclick="setMode('manual')">Manual</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Image Upload Mode -->
+        <div class="upload-zone" id="upload-zone">
+            <input type="file" id="file-input" accept="image/*">
+            <div class="image-preview-container" id="preview-container">
+                <img id="image-preview" src="" alt="Preview">
+            </div>
+            <div id="upload-prompt">
+                <div class="upload-icon">ðŸŽ¨</div>
+                <div class="upload-text">Drag & Drop an image here</div>
+                <div class="upload-subtext">or click to browse (JPG, PNG, WebP)</div>
+            </div>
+        </div>
+
+        <!-- Manual Input Mode -->
+        <div class="manual-zone" id="manual-zone">
+            <h3>Enter a Hex Code</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 24px;">We'll generate beautiful harmonies for you.</p>
+            <input type="text" class="manual-input" id="hex-input" placeholder="#3B82F6" maxlength="7" onkeyup="handleManualInput(event)">
+            
+            <div class="harmonies-grid" id="harmonies-container" style="display: none;">
+                <div class="harmony-row" id="harm-complementary"></div>
+                <div class="harmony-row" id="harm-triadic"></div>
+                <div class="harmony-row" id="harm-analogous"></div>
+                <div class="harmony-row" id="harm-split"></div>
+            </div>
+        </div>
+
+        <div class="palette-container" id="palette-container">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Extracted Palette</h3>
+                    <button class="btn btn-secondary" onclick="exportJSON()" style="padding: 6px 12px; font-size: 12px;">Export JSON</button>
+                </div>
+                <div class="swatches-wrapper" id="swatches-wrapper"></div>
+            </div>
+
+            <div class="features-grid" id="features-grid">
+                
+                <!-- Smart Roles -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Smart Roles</h3>
+                    </div>
+                    <div class="role-preview">
+                        <div class="role-accent-blob"></div>
+                        <div class="role-nav">
+                            <div class="role-nav-logo"></div>
+                            <div style="display:flex; gap:12px;">
+                                <div style="width:30px; height:6px; border-radius:3px; background:var(--theme-text); opacity:0.3"></div>
+                                <div style="width:30px; height:6px; border-radius:3px; background:var(--theme-text); opacity:0.3"></div>
+                            </div>
+                        </div>
+                        <div class="role-hero">
+                            <h4>Design System</h4>
+                            <p>Colors intelligently assigned based on luminance to ensure readability.</p>
+                            <button class="role-btn">Get Started</button>
+                        </div>
+                    </div>
+                    <div class="role-assignments" id="role-assignments"></div>
+                </div>
+
+                <!-- Contrast Checker -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Contrast Matrix (WCAG)</h3>
+                    </div>
+                    <div class="contrast-matrix" id="contrast-matrix"></div>
+                    <div class="contrast-legend">
+                        <div class="legend-item"><div class="legend-dot" style="background:#10B981"></div> AAA Pass (7:1+)</div>
+                        <div class="legend-item"><div class="legend-dot" style="background:#F59E0B"></div> AA Pass (4.5:1+)</div>
+                        <div class="legend-item"><div class="legend-dot" style="background:#EF4444"></div> Fail</div>
+                    </div>
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-top: 8px;">
+                        Warning: Using failing combinations for text and background will make your UI unreadable.
+                    </div>
+                </div>
+
+                <!-- Font Pairings -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Suggested Font Pairings</h3>
+                    </div>
+                    <div class="font-pairings" id="font-pairings"></div>
+                </div>
+
+                <!-- Theme Generator -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Presentation Theme</h3>
+                    </div>
+                    <div class="theme-slides" id="theme-slides"></div>
+                </div>
+
+                <!-- Exports -->
+                <div class="card" style="grid-column: 1 / -1;">
+                    <div class="card-header">
+                        <h3 class="card-title">Export Options</h3>
+                    </div>
+                    <div class="export-actions">
+                        <button class="btn btn-primary" onclick="exportCSS()">Export CSS Variables</button>
+                        <button class="btn btn-secondary" onclick="exportHexList()">Copy All Hex Codes</button>
+                        <button class="btn btn-secondary" onclick="exportPNGCard()">Download PNG Card</button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <div class="toast" id="toast">Copied to clipboard!</div>
+
+  <script src="js/palette.js"></script>
+</body>
+</html>
